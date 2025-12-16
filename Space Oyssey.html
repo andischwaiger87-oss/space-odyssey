@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Space Odyssey: Mosaik Edition</title>
+    <meta name="theme-color" content="#000000">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #38bdf8;
+            --accent: #f43f5e;
+            --gold: #fbbf24;
+            --glass: rgba(15, 23, 42, 0.95);
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #000;
+            font-family: 'Inter', sans-serif;
+            touch-action: none; user-select: none; -webkit-user-select: none;
+            color: #e2e8f0;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        /* --- UI ELEMENTS --- */
+        #ui-layer {
+            position: absolute; inset: 0; z-index: 10; pointer-events: none;
+            padding: 20px; display: flex; flex-direction: column; justify-content: space-between;
+        }
+
+        .hud-font { font-family: 'Rajdhani', sans-serif; text-transform: uppercase; }
+
+        /* Notification Toast */
+        #notification {
+            position: absolute; top: 100px; left: 50%; transform: translateX(-50%) translateY(-20px);
+            background: rgba(16, 185, 129, 0.9); color: white; padding: 12px 24px;
+            border-radius: 8px; font-family: 'Rajdhani'; font-weight: bold; letter-spacing: 1px;
+            opacity: 0; transition: all 0.5s; z-index: 100; pointer-events: none;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5); text-align: center; border: 1px solid #fff;
+        }
+        #notification.active { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* Start Screen */
+        #start-screen {
+            position: absolute; inset: 0; background: #020617; z-index: 100;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.8s;
+        }
+        
+        /* Universe Switcher */
+        .uni-switch { pointer-events: auto; display: flex; gap: 8px; margin-top: 8px; opacity: 0; transition: opacity 0.5s; }
+        .uni-switch.visible { opacity: 1; }
+        .uni-btn {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2);
+            color: #94a3b8; padding: 6px 12px; font-size: 11px; font-weight: 600;
+            border-radius: 4px; cursor: pointer; transition: 0.3s;
+        }
+        .uni-btn.active { background: var(--primary); color: #000; border-color: var(--primary); box-shadow: 0 0 15px rgba(56, 189, 248, 0.4); }
+
+        /* Nav Arrows */
+        .nav-arrow {
+            position: absolute; width: 0; height: 0;
+            border-left: 6px solid transparent; border-right: 6px solid transparent;
+            border-bottom: 10px solid var(--primary);
+            z-index: 5; pointer-events: none; transition: opacity 0.3s;
+            filter: drop-shadow(0 0 4px var(--primary));
+        }
+        .nav-arrow.quest-target { border-bottom-color: #d946ef; filter: drop-shadow(0 0 8px #d946ef); }
+        
+        .nav-label {
+            position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+            font-size: 9px; font-weight: 600; white-space: nowrap; opacity: 0.8;
+        }
+
+        /* --- MODAL SYSTEM --- */
+        .modal-overlay {
+            position: absolute; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+            z-index: 50; display: flex; align-items: flex-end; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        @media (min-width: 768px) { .modal-overlay { align-items: center; justify-content: center; } }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+
+        .modal-card {
+            width: 100%; max-width: 750px; background: #0f172a;
+            border-top: 1px solid rgba(255,255,255,0.1); border-radius: 24px 24px 0 0;
+            height: 85vh; 
+            max-height: 85vh;
+            transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 -20px 50px rgba(0,0,0,0.8);
+        }
+        @media (min-width: 768px) { 
+            .modal-card { border-radius: 16px; transform: translateY(20px); border: 1px solid rgba(255,255,255,0.1); height: 80vh; } 
+        }
+        .modal-overlay.active .modal-card { transform: translateY(0); }
+
+        /* Scrolling Logic & Accessibility */
+        .modal-header { flex: 0 0 auto; z-index: 2; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+        
+        .modal-body { 
+            flex: 1 1 auto; 
+            overflow-y: auto; 
+            padding: 24px; 
+            -webkit-overflow-scrolling: touch; 
+            overscroll-behavior: contain; 
+        }
+
+        .data-header {
+            background: linear-gradient(to right, #1e293b, #0f172a);
+            padding: 24px; display: flex; align-items: center; gap: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+        .data-box { background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); }
+        .data-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+        .data-val { font-family: 'Rajdhani'; font-size: 16px; font-weight: 600; color: #f1f5f9; }
+
+        .section-title {
+            font-family: 'Rajdhani'; font-size: 14px; color: var(--primary); 
+            text-transform: uppercase; letter-spacing: 2px; margin: 24px 0 12px 0;
+            border-bottom: 1px solid rgba(56, 189, 248, 0.2); padding-bottom: 4px;
+        }
+
+        .long-text { font-size: 15px; line-height: 1.7; color: #cbd5e1; font-weight: 300; }
+        
+        /* Action Button */
+        #land-btn {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
+            opacity: 0; pointer-events: none; background: #fff; color: #000; font-weight: bold; font-family: 'Rajdhani';
+            border-radius: 4px; padding: 12px 30px; z-index: 30; transition: all 0.4s; letter-spacing: 1px;
+            box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+        #land-btn.visible { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+
+        /* Shop Styles */
+        .shop-item {
+            background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 20px; border-radius: 12px; display: flex; align-items: center; justify-content: space-between;
+            margin-top: 20px;
+        }
+        .upgrade-btn {
+            background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px;
+            font-family: 'Rajdhani'; font-weight: bold; cursor: pointer;
+        }
+        .upgrade-btn:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
+
+        #warp-overlay { position: absolute; inset: 0; background: #fff; z-index: 90; pointer-events: none; opacity: 0; transition: opacity 1.5s; }
+
+        .start-btn {
+            background: transparent; border: 1px solid #fff; color: #fff; padding: 15px 50px;
+            font-family: 'Rajdhani'; font-size: 18px; letter-spacing: 4px; cursor: pointer;
+            transition: 0.3s; text-transform: uppercase;
+        }
+        .start-btn:hover { background: #fff; color: #000; box-shadow: 0 0 40px #fff; }
+
+        /* Mosaik Link Button */
+        .mosaik-link-btn {
+            display: block; width: 100%; margin-top: 20px; padding: 15px;
+            background: linear-gradient(90deg, #6F00FF, #3b82f6);
+            color: white; text-align: center; font-family: 'Rajdhani'; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;
+            border-radius: 8px; text-decoration: none; transition: 0.3s;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .mosaik-link-btn:hover { filter: brightness(1.2); box-shadow: 0 0 20px rgba(111, 0, 255, 0.4); }
+
+    </style>
+</head>
+<body>
+
+    <div id="warp-overlay"></div>
+    <div id="notification">NEUE ROUTE BERECHNET</div>
+
+    <div id="start-screen">
+        <h1 class="text-6xl font-bold tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-600">ODYSSEY</h1>
+        <div class="text-slate-400 font-mono text-xs mb-12 tracking-[0.5em] uppercase">Mosaik Edition</div>
+        <button class="start-btn" onclick="app.start()">Start Engines</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="pointer-events-auto">
+            <div class="hud-font text-xs text-slate-400">System Status</div>
+            <div class="text-2xl font-bold tracking-wide mb-1" id="sys-name">SOLAR SYSTEM</div>
+            <div class="uni-switch" id="dimension-ctrl">
+                <div class="uni-btn active" onclick="app.warp('SOL')">SOL</div>
+                <div class="uni-btn" onclick="app.warp('NEON')">NEON</div>
+            </div>
+        </div>
+
+        <div class="text-right pointer-events-auto">
+            <div class="hud-font text-xs text-slate-400">Antriebsleistung</div>
+            <div id="vel-disp" class="text-3xl font-bold font-mono">0%</div>
+            <div class="text-[10px] text-slate-500 uppercase" id="engine-status">Sub-Licht</div>
+        </div>
+        
+        <div id="hint" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-1000 bg-slate-900/50 backdrop-blur px-4 py-2 border border-white/10 rounded text-center">
+            <div class="text-xs text-slate-300 tracking-widest hidden md:block">WASD / ARROWS TO FLY<br>ENTER TO ACT</div>
+            <div class="text-xs text-slate-300 tracking-widest md:hidden">DRAG TO FLY</div>
+        </div>
+    </div>
+
+    <button id="land-btn">SCANNER ÖFFNEN</button>
+
+    <div id="info-modal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="data-header">
+                    <div id="modal-visual" class="w-16 h-16 rounded-full shadow-2xl bg-black border border-white/20 shrink-0"></div>
+                    <div class="flex-grow">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h2 id="modal-title" class="text-2xl font-bold text-white mb-1">ERDE</h2>
+                                <div id="modal-sub" class="text-xs text-primary font-mono uppercase tracking-widest border border-primary/30 inline-block px-2 py-0.5 rounded">Gesteinsplanet</div>
+                            </div>
+                            <button onclick="app.closeModal()" class="text-slate-400 hover:text-white p-2 text-2xl leading-none">&times;</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-body">
+                <p id="modal-desc" class="long-text mb-6">...</p>
+
+                <div class="section-title">Wissenschaftliche Daten</div>
+                <div class="data-grid" id="modal-grid"></div>
+
+                <div class="section-title">Atmosphäre & Aufbau</div>
+                <p id="modal-comp" class="long-text mb-4 text-sm text-slate-300"></p>
+
+                <div id="mission-section">
+                    <div class="section-title">Historische Missionen</div>
+                    <p id="modal-missions" class="text-xs text-slate-400 font-mono leading-relaxed border-l-2 border-slate-600 pl-3"></p>
+                </div>
+                
+                <div id="modal-link-container"></div>
+                
+                <div class="h-8"></div> </div>
+        </div>
+    </div>
+
+    <div id="shop-modal" class="modal-overlay">
+        <div class="modal-card" style="height: auto; max-height: 80vh;">
+            <div class="data-header bg-gradient-to-r from-emerald-900 to-slate-900">
+                <div class="w-16 h-16 rounded-lg bg-emerald-500 flex items-center justify-center text-3xl">🛠️</div>
+                <div class="flex-grow">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h2 class="text-2xl font-bold text-white mb-1">GATEWAY ALPHA</h2>
+                            <div class="text-xs text-emerald-400 font-mono uppercase tracking-widest">Werkstatt & Upgrades</div>
+                        </div>
+                        <button onclick="app.closeShop()" class="text-slate-400 hover:text-white p-2 text-2xl leading-none">&times;</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <p class="text-slate-300 text-sm">Willkommen, Commander. Hier können Sie Ihr Schiff für interstellare Reisen modifizieren.</p>
+                
+                <div class="shop-item">
+                    <div>
+                        <h3 class="text-white font-bold">V-2 Hyperdrive</h3>
+                        <p class="text-xs text-slate-400 mt-1">Erhöht Schub um 100%. Violette Ionen-Spur.</p>
+                    </div>
+                    <button id="buy-upgrade-btn" class="upgrade-btn" onclick="app.buyUpgrade()">INSTALLIEREN</button>
+                </div>
+                
+                <div class="mt-8 p-4 bg-slate-800 rounded border border-white/5">
+                    <div class="text-xs text-slate-500 uppercase mb-2">Statusbericht</div>
+                    <p id="upgrade-status-text" class="text-sm text-emerald-400">Systeme nominal. Antrieb bereit für Upgrade.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * SPACE ODYSSEY: MOSAIK EDITION
+         */
+
+        const UNIVERSE_SOL = [
+            { 
+                id: 'sun', type: 'stern', name: 'Sonne', r: 450, color: '#fbbf24', x: 0, y: 0, glow: '#d97706', 
+                sub: 'Gelber Zwerg (G2V)',
+                desc: 'Die Sonne ist das gravitative Zentrum unseres Sonnensystems und enthält 99,86% der gesamten Masse. Sie ist kein fester Körper, sondern ein riesiger Ball aus elektrisch geladenem Gas (Plasma). Im Kern fusioniert sie 600 Millionen Tonnen Wasserstoff pro Sekunde zu Helium, was Temperaturen von 15 Millionen Grad Celsius erzeugt. Das Sonnenlicht benötigt ca. 8 Minuten und 20 Sekunden, um die Erde zu erreichen.',
+                stats: { "Radius": "696.340 km", "Oberfläche": "5.500 °C", "Kern": "15 Mio °C", "Rotation": "25-35 Tage" },
+                comp: 'Hauptbestandteile: Wasserstoff (74,9%) und Helium (23,8%). Spurenelemente umfassen Sauerstoff, Kohlenstoff, Neon und Eisen. Magnetfelder erzeugen Sonnenflecken und Eruptionen.', 
+                missions: 'Parker Solar Probe (NASA), Solar Orbiter (ESA).'
+            },
+            { 
+                id: 'mercury', type: 'planet', name: 'Merkur', r: 40, color: '#94a3b8', x: 1000, y: 0, glow: '#cbd5e1', 
+                sub: 'Terrestrischer Planet',
+                desc: 'Merkur ist der kleinste und innerste Planet. Aufgrund der fehlenden Atmosphäre zur Wärmespeicherung herrschen hier die extremsten Temperaturschwankungen im Sonnensystem. Trotz der Nähe zur Sonne existiert Wassereis in den permanent beschatteten Kratern der Polregionen. Ein Tag auf Merkur (Sonnenaufgang bis Sonnenaufgang) dauert 176 Erdtage.',
+                stats: { "Radius": "2.439 km", "Tag": "59 Erdtage", "Temp Max": "430 °C", "Temp Min": "-180 °C" },
+                comp: 'Dünne Exosphäre aus Sauerstoff, Natrium, Wasserstoff, Helium und Kalium. Besitzt einen im Verhältnis riesigen Eisenkern (85% des Radius).', 
+                missions: 'Mariner 10, MESSENGER, BepiColombo.'
+            },
+            { 
+                id: 'venus', type: 'planet', name: 'Venus', r: 75, color: '#eab308', x: 1800, y: 600, glow: '#facc15', 
+                sub: 'Treibhaus-Welt',
+                desc: 'Venus wird oft als "Zwillingsschwester" der Erde bezeichnet, ist aber eine toxische Hölle. Eine extrem dichte Atmosphäre fängt Wärme so effizient ein, dass sie heißer als Merkur ist. Der atmosphärische Druck an der Oberfläche entspricht dem Druck in 900 Metern Meerestiefe auf der Erde. Venus rotiert retrograd, also entgegengesetzt zu den meisten anderen Planeten.',
+                stats: { "Radius": "6.051 km", "Temp": "464 °C", "Druck": "92 bar", "Tag": "243 Erdtage" },
+                comp: 'Atmosphäre: 96% Kohlendioxid, 3.5% Stickstoff. Wolken aus Schwefelsäuretröpfchen verhindern den direkten Blick auf die vulkanische Oberfläche.', 
+                missions: 'Venera (UdSSR), Magellan (NASA), Akatsuki (JAXA).'
+            },
+            { 
+                id: 'earth', type: 'planet', name: 'Erde', r: 80, color: '#0ea5e9', x: 2800, y: -400, glow: '#38bdf8', texture: true,
+                sub: 'Heimatplanet',
+                desc: 'Unser blauer Planet ist der einzige bekannte Himmelskörper, der Leben beherbergt. Flüssiges Wasser bedeckt über 70% der Oberfläche. Die Erde wird durch ein starkes Magnetfeld vor tödlicher Sonnenstrahlung geschützt. Ihre Atmosphäre und Distanz zur Sonne ermöglichen Temperaturen, die Wasser in allen drei Aggregatzuständen erlauben.',
+                stats: { "Radius": "6.371 km", "Tag": "23h 56m", "Mond": "1 (Luna)", "Gravitation": "9.807 m/s²" },
+                comp: 'Atmosphäre: 78% Stickstoff, 21% Sauerstoff, 0,9% Argon. Innerer Aufbau: Eisen-Nickel-Kern, Silikatmantel, Gesteinskruste.', 
+                missions: 'Heimat der Menschheit (Typ 0.7 Zivilisation).'
+            },
+            { 
+                id: 'iss', type: 'satellite', name: 'ISS', parent: 'earth', dist: 140, size: 8, speed: 0.002, color: '#fff', 
+                sub: 'Orbitallabor', desc: 'Die Internationale Raumstation ist das größte von Menschen geschaffene Objekt im All. Sie dient als Labor für Forschung in Schwerelosigkeit (Mikrogravitation).',
+                stats: { "Speed": "27.600 km/h", "Höhe": "408 km", "Umlauf": "90 min" }, comp: 'Modularer Aufbau, Solarpaneele.', missions: 'Expedition 1 bis heute.'
+            },
+            { 
+                id: 'hubble', type: 'satellite', name: 'Hubble', parent: 'earth', dist: 180, size: 5, speed: 0.0015, color: '#cbd5e1',
+                sub: 'Weltraumteleskop', desc: 'Das Hubble Space Telescope (HST) revolutionierte die Astronomie. Es hat das Alter des Universums bestimmt und Dunkle Energie nachgewiesen.',
+                stats: { "Start": "1990", "Spiegel": "2.4m", "Wellenlänge": "UV, Vis, NIR" }, comp: 'Cassegrain-Reflektor.', missions: '5 Service Missionen (Space Shuttle).'
+            },
+            { 
+                id: 'mars', type: 'planet', name: 'Mars', r: 60, color: '#ef4444', x: 3800, y: 500, glow: '#f87171', 
+                sub: 'Roter Planet',
+                desc: 'Mars ist eine kalte Wüstenwelt. Die rötliche Farbe stammt von oxidiertem Eisen (Rost) im Boden. Er besitzt den größten Vulkan (Olympus Mons) und den tiefsten Canyon (Valles Marineris) des Sonnensystems. Es gibt Hinweise, dass der Mars einst flüssiges Wasser und eine dichtere Atmosphäre hatte.',
+                stats: { "Radius": "3.389 km", "Tag": "24h 37m", "Jahr": "687 Tage", "Schwerkraft": "38% d. Erde" },
+                comp: 'Atmosphäre: 95% Kohlendioxid. Polkappen aus Wassereis und Trockeneis (gefrorenes CO2).', 
+                missions: 'Curiosity, Perseverance, Ingenuity, Viking.'
+            },
+            // Die Station (Shop)
+            {
+                id: 'station', type: 'station', name: 'Gateway Alpha', r: 25, color: '#10b981', x: 3200, y: 100, glow: '#34d399',
+                sub: 'Weltraumbahnhof', desc: 'Zentraler Handelsposten und Werkstatt für Raumfahrer.'
+            },
+            { 
+                id: 'jupiter', type: 'planet', name: 'Jupiter', r: 240, color: '#d97706', x: 6000, y: -900, glow: '#fbbf24', bands: true,
+                sub: 'Gasriese',
+                desc: 'Jupiter ist mehr als doppelt so massereich wie alle anderen Planeten zusammen. Sein ikonischer "Großer Roter Fleck" ist ein gigantischer Sturm, der seit Jahrhunderten wütet und größer als die Erde ist. Jupiter besitzt ein extrem starkes Magnetfeld und Dutzende von Monden, darunter Europa, unter dessen Eiskruste ein Ozean vermutet wird.',
+                stats: { "Radius": "69.911 km", "Tag": "9h 56m", "Monde": "95 (bekannt)", "Jahr": "11,8 Erdjahre" },
+                comp: 'Zusammensetzung ähnelt einem Stern: 90% Wasserstoff, 10% Helium. Wahrscheinlich kleiner fester Kern.', 
+                missions: 'Voyager, Galileo, Juno, Juice.'
+            },
+            { 
+                id: 'saturn', type: 'planet', name: 'Saturn', r: 210, color: '#fcd34d', x: 8000, y: 300, glow: '#fef08a', rings: true,
+                sub: 'Ringplanet',
+                desc: 'Saturn ist bekannt für sein spektakuläres Ringsystem, das komplexeste im Sonnensystem. Die Ringe bestehen aus Milliarden von Eis- und Gesteinsbrocken. Saturn ist der Planet mit der geringsten Dichte; er ist leichter als Wasser und würde in einem gigantischen Ozean schwimmen.',
+                stats: { "Radius": "58.232 km", "Tag": "10h 42m", "Monde": "146 (bekannt)", "Temp": "-140 °C" },
+                comp: 'Hauptsächlich Wasserstoff und Helium. Ringe: 99,9% reines Wassereis.', 
+                missions: 'Pioneer 11, Voyager, Cassini-Huygens.'
+            },
+            { 
+                id: 'uranus', type: 'planet', name: 'Uranus', r: 140, color: '#67e8f9', x: 10000, y: -600, glow: '#22d3ee', 
+                sub: 'Eisriese',
+                desc: 'Uranus ist einzigartig, da er "auf der Seite rollt" – seine Rotationsachse ist um 98 Grad geneigt, was zu extremen Jahreszeiten führt (21 Jahre Polartag/-nacht). Seine blassblaue Farbe entsteht durch Methan in der Atmosphäre, welches rotes Licht absorbiert. ACHTUNG: Sensoren registrieren gravimetrische Anomalien in Sektor 4500,-100.',
+                stats: { "Radius": "25.362 km", "Temp": "-224 °C (Kältester Planet)", "Tag": "17h 14m", "Jahr": "84 Erdjahre" },
+                comp: 'Atmosphäre: Wasserstoff, Helium, Methan. Mantel: Heiße, dichte Flüssigkeit aus Wasser, Ammoniak und Methan ("Eis").', 
+                missions: 'Voyager 2.'
+            },
+            { 
+                id: 'neptune', type: 'planet', name: 'Neptun', r: 135, color: '#3b82f6', x: 12000, y: 600, glow: '#60a5fa', 
+                sub: 'Der Blaue Riese',
+                desc: 'Neptun ist der am weitesten entfernte bekannte große Planet. Er ist dunkel, kalt und wird von Überschallwinden gepeitscht, die Geschwindigkeiten von bis zu 2.000 km/h erreichen können. Mathematische Berechnungen sagten seine Existenz voraus, bevor er 1846 teleskopisch entdeckt wurde.',
+                stats: { "Radius": "24.622 km", "Tag": "16h 6m", "Jahr": "165 Erdjahre", "Monde": "14 (Triton)" },
+                comp: 'Ähnlich wie Uranus: Ein Eismantel um einen kleinen Gesteinskern. Atmosphäre reich an Methan.', 
+                missions: 'Voyager 2.'
+            },
+            { 
+                id: 'wormhole', type: 'wormhole', name: 'Anomalie', r: 60, color: '#fff', x: 4500, y: -100, glow: '#a855f7', 
+                sub: 'Unbekannt', desc: 'Instabiles Wurmloch.', hidden: true
+            }
+        ];
+
+        // Mosaik Logo SVG: Path colors tweaked for space (black -> white)
+        const SVG_DATA = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" fill="none"><path fill="#ffffff" d="M384.058 246.907c-69.514 0-115.53 29.373-140.987 64.619l-6.853-54.828H106v496.395h144.904V440.767c20.56-29.373 47.975-57.766 92.033-57.766 47.976 0 74.412 37.205 74.412 92.033v278.059h144.903V440.767c19.58-30.354 47.975-57.766 91.053-57.766 47.974 0 75.391 37.205 75.391 92.033v45.536a154.65 154.65 0 0 1 70.23-16.869 154.66 154.66 0 0 1 59.173 11.769v.001c5.31 2.2 10.483 4.69 15.496 7.455v-55.724c.003-134.135-62.653-220.295-178.191-220.295-76.366 0-127.277 35.249-162.525 85.183-29.371-53.852-79.304-85.183-148.821-85.183Z"/><path fill="#6F00FF" d="M798.923 563.595a94.683 94.683 0 0 0-66.986 27.746v.002a94.744 94.744 0 0 0-27.751 66.988 94.69 94.69 0 0 0 27.75 66.987v.003a94.683 94.683 0 0 0 66.986 27.746 94.703 94.703 0 0 0 66.988-27.747 94.71 94.71 0 0 0 27.746-66.989 94.698 94.698 0 0 0-7.212-36.251v-.008a94.779 94.779 0 0 0-20.529-30.728 94.799 94.799 0 0 0-30.735-20.537 94.77 94.77 0 0 0-36.254-7.212h-.003Z"/></svg>')}`;
+
+        const UNIVERSE_NEON = [
+            // The Mosaik Mothership
+            { 
+                id: 'mosaik', type: 'mothership', name: 'MOSAIK', r: 80, x: 0, y: -600, 
+                sub: 'Mothership', 
+                desc: 'Das zentrale Interface für digitales Design und kreative Entwicklung. Hier verschmelzen Code und Ästhetik zu neuen Universen.',
+                stats: { "Klasse": "Mothership", "Status": "Online", "System": "Neon Core" }, 
+                comp: 'Pixel, Vektoren, Code-Fragmente.', 
+                missions: 'Design Innovation, Branding, Web Development.',
+                link: 'https://mosaik-design.at/'
+            },
+            { id: 'bh', type: 'planet', name: 'Singularität', r: 150, color: '#000', x: 0, y: 0, glow: '#d946ef', sub: 'Schwarzes Loch', desc: 'Ein Punkt im Raum mit unendlicher Dichte. Die Gravitation ist so stark, dass nicht einmal Licht entkommen kann.', stats:{"Masse":"4 Mio Sonnen", "Horizont": "12 Mio km"}, comp:"Raumzeit-Krümmung", missions:"-" },
+            { id: 'crystal', type: 'planet', name: 'Xylos', r: 90, color: '#10b981', x: 1800, y: 400, glow: '#34d399', sub: 'Kohlenstoff-Welt', desc: 'Ein hypothetischer Planet, der hauptsächlich aus kristallinem Kohlenstoff (Diamant) besteht.', stats:{"Härte":"10 (Mohs)", "Wert": "Unbezahlbar"}, comp:"Reiner Kohlenstoff", missions:"-" },
+            { id: 'wormhole_return', type: 'wormhole', name: 'Riss', r: 60, color: '#fff', x: -1000, y: 0, glow: '#0ea5e9', sub: 'Portal', desc: 'Weg zurück in das Sol-System.', stats:{}, comp:"-", missions:"-" }
+        ];
+
+        // --- ENGINE ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        let width, height;
+        let isRunning = false;
+        
+        // Assets
+        const mosaikImg = new Image();
+        
+        // Game State
+        let currentUniverseId = 'SOL';
+        let entities = [];
+        let stars = [];
+        let particles = [];
+        
+        // Player
+        const rocket = { x: 2600, y: -400, vx: 0, vy: 0, angle: -Math.PI/2, speedMult: 1.0 };
+        const cam = { x: 2600, y: -400 };
+        
+        // Input System (Modified for Keyboard)
+        const input = { active: false, x: 0, y: 0, ox: 0, oy: 0 };
+        const keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+        let usingKeyboard = false;
+        let currentNearEntity = null;
+
+        // Progression State
+        let wormholeRevealed = false;
+        let universeUnlocked = false;
+
+        // --- INIT ---
+        window.addEventListener('load', () => { 
+            mosaikImg.src = SVG_DATA;
+            resize(); 
+            initStars(); 
+        });
+        window.addEventListener('resize', resize);
+        
+        function resize() {
+            width = window.innerWidth; height = window.innerHeight;
+            canvas.width = width; canvas.height = height;
+        }
+
+        function initStars() {
+            stars = [];
+            const color = currentUniverseId === 'SOL' ? '#fff' : '#d946ef';
+            for(let i=0; i<800; i++) {
+                stars.push({
+                    x: Math.random()*5000-2500, y: Math.random()*5000-2500,
+                    size: Math.random()*1.5+0.5, alpha: Math.random()*0.8+0.1,
+                    layer: Math.floor(Math.random()*4)+1,
+                    color: Math.random() > 0.9 ? color : '#fff'
+                });
+            }
+        }
+
+        function loadUniverse(id) {
+            currentUniverseId = id;
+            // Clone data
+            entities = id === 'SOL' ? JSON.parse(JSON.stringify(UNIVERSE_SOL)) : JSON.parse(JSON.stringify(UNIVERSE_NEON));
+            
+            // Restore hidden state of wormhole if in SOL
+            if(id === 'SOL' && !wormholeRevealed) {
+                const wh = entities.find(e => e.id === 'wormhole');
+                if(wh) wh.hidden = true;
+            } else if (id === 'SOL' && wormholeRevealed) {
+                 const wh = entities.find(e => e.id === 'wormhole');
+                 if(wh) wh.hidden = false;
+            }
+
+            document.getElementById('sys-name').innerText = id === 'SOL' ? 'SOLAR SYSTEM' : 'NEON SECTOR';
+            document.documentElement.style.setProperty('--primary', id === 'SOL' ? '#38bdf8' : '#d946ef');
+            
+            // Highlight Buttons
+            document.querySelectorAll('.uni-btn').forEach(b => {
+                b.classList.remove('active');
+                if(b.innerText.includes(id)) b.classList.add('active');
+            });
+
+            initStars();
+            // Clear markers
+            document.querySelectorAll('.nav-arrow').forEach(e => e.remove());
+        }
+
+        // --- INTERFACE ---
+        window.app = {
+            start: () => {
+                document.getElementById('start-screen').style.opacity = 0;
+                setTimeout(() => {
+                    document.getElementById('start-screen').style.display = 'none';
+                    loadUniverse('SOL');
+                    setupInput();
+                    isRunning = true;
+                    loop();
+                }, 800);
+            },
+            closeModal: () => document.getElementById('info-modal').classList.remove('active'),
+            closeShop: () => document.getElementById('shop-modal').classList.remove('active'),
+            warp: (id) => { if(id !== currentUniverseId) performWarp(id); },
+            buyUpgrade: () => installUpgrade()
+        };
+
+        function showNotification(text) {
+            const n = document.getElementById('notification');
+            n.innerText = text;
+            n.classList.add('active');
+            setTimeout(() => n.classList.remove('active'), 4000);
+        }
+
+        function installUpgrade() {
+            const btn = document.getElementById('buy-upgrade-btn');
+            const status = document.getElementById('upgrade-status-text');
+            
+            rocket.speedMult = 2.0;
+            btn.disabled = true;
+            btn.innerText = "INSTALLIERT";
+            status.innerText = "HYPERDRIVE AKTIV. Maximale Schubkraft verfügbar.";
+            document.getElementById('engine-status').innerText = "HYPER-SPEED";
+            document.getElementById('engine-status').style.color = "#d946ef";
+            
+            showNotification("UPGRADE INSTALLIERT");
+            setTimeout(app.closeShop, 1500);
+        }
+
+        // --- INPUT ---
+        function setupInput() {
+            // Mouse / Touch
+            const start = (x,y) => { 
+                if(document.querySelector('.modal-overlay.active')) return;
+                input.active=true; usingKeyboard=false; input.ox=x; input.oy=y; 
+                document.getElementById('hint').style.opacity=0; 
+            };
+            const move = (x,y) => {
+                if(!input.active || usingKeyboard) return;
+                let dx=x-input.ox, dy=y-input.oy;
+                const dist = Math.hypot(dx,dy);
+                const max = 80;
+                if(dist>max) { dx=(dx/dist)*max; dy=(dy/dist)*max; }
+                input.x=dx/max; input.y=dy/max;
+            };
+            const end = () => { if(!usingKeyboard) { input.active=false; input.x=0; input.y=0; } };
+
+            window.addEventListener('mousedown', e=>start(e.clientX,e.clientY));
+            window.addEventListener('mousemove', e=>move(e.clientX,e.clientY));
+            window.addEventListener('mouseup', end);
+            window.addEventListener('touchstart', e=>start(e.touches[0].clientX,e.touches[0].clientY), {passive:false});
+            window.addEventListener('touchmove', e=>{e.preventDefault(); move(e.touches[0].clientX,e.touches[0].clientY)}, {passive:false});
+            window.addEventListener('touchend', end);
+
+            // Keyboard Listeners
+            window.addEventListener('keydown', e => {
+                if(e.key === 'Enter') {
+                    const activeModal = document.querySelector('.modal-overlay.active');
+                    if(activeModal) {
+                        app.closeModal();
+                        app.closeShop();
+                        return;
+                    }
+                    if(currentNearEntity) {
+                        if(currentNearEntity.type === 'station') openShop();
+                        else showInfo(currentNearEntity);
+                        return;
+                    }
+                }
+
+                if(document.querySelector('.modal-overlay.active')) return;
+                
+                if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.code)) {
+                    keys[e.key] = true;
+                    usingKeyboard = true;
+                    document.getElementById('hint').style.opacity=0;
+                }
+            });
+            window.addEventListener('keyup', e => {
+                if(keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.code)) {
+                    keys[e.key] = false;
+                }
+            });
+        }
+
+        function handleKeyboard() {
+            if(!usingKeyboard) return;
+            
+            let dx = 0; let dy = 0;
+            if(keys.w || keys.ArrowUp) dy -= 1;
+            if(keys.s || keys.ArrowDown) dy += 1;
+            if(keys.a || keys.ArrowLeft) dx -= 1;
+            if(keys.d || keys.ArrowRight) dx += 1;
+
+            if(dx !== 0 || dy !== 0) {
+                input.active = true;
+                input.x = dx;
+                input.y = dy;
+            } else {
+                input.active = false;
+                input.x = 0; input.y = 0;
+            }
+        }
+
+        // --- LOGIC ---
+        function loop() {
+            if(!isRunning) return;
+            handleKeyboard(); 
+            update(); draw(); requestAnimationFrame(loop);
+        }
+
+        function update() {
+            // Physics
+            const thrustInput = Math.hypot(input.x, input.y);
+            
+            if(input.active && thrustInput > 0.1) {
+                const target = Math.atan2(input.y, input.x);
+                let diff = target - rocket.angle;
+                while(diff < -Math.PI) diff += Math.PI*2;
+                while(diff > Math.PI) diff -= Math.PI*2;
+                rocket.angle += diff * 0.1;
+                
+                const safeInput = Math.min(thrustInput, 1.0);
+                const thrustPower = 0.5 * rocket.speedMult;
+                rocket.vx += Math.cos(rocket.angle) * safeInput * thrustPower;
+                rocket.vy += Math.sin(rocket.angle) * safeInput * thrustPower;
+
+                const trailColor = rocket.speedMult > 1.0 ? '#d946ef' : (currentUniverseId==='SOL'?'#38bdf8':'#d946ef');
+                for(let i=0; i< (rocket.speedMult > 1 ? 4 : 2); i++) {
+                    particles.push({
+                        x: rocket.x - Math.cos(rocket.angle)*15 + (Math.random()-0.5)*4,
+                        y: rocket.y - Math.sin(rocket.angle)*15 + (Math.random()-0.5)*4,
+                        vx: -Math.cos(rocket.angle)* (4 * rocket.speedMult), vy: -Math.sin(rocket.angle)* (4 * rocket.speedMult),
+                        life: 20, color: trailColor
+                    });
+                }
+            }
+            rocket.vx *= 0.96; rocket.vy *= 0.96;
+            rocket.x += rocket.vx; rocket.y += rocket.vy;
+
+            // Cam
+            cam.x += (rocket.x - width/2 + rocket.vx*20 - cam.x) * 0.1;
+            cam.y += (rocket.y - height/2 + rocket.vy*20 - cam.y) * 0.1;
+
+            // Entities Update
+            const time = Date.now();
+            entities.forEach(e => {
+                if(e.type === 'satellite') {
+                    const parent = entities.find(p => p.id === e.parent);
+                    if(parent) {
+                        const angle = time * e.speed;
+                        e.x = parent.x + Math.cos(angle) * e.dist;
+                        e.y = parent.y + Math.sin(angle) * e.dist;
+                    }
+                } else if(e.type === 'wormhole' && !e.hidden) {
+                    const dist = Math.hypot(rocket.x - e.x, rocket.y - e.y);
+                    if(dist < 50) {
+                        performWarp(currentUniverseId === 'SOL' ? 'NEON' : 'SOL');
+                    }
+                }
+            });
+
+            // Particles
+            particles.forEach((p,i) => { p.x+=p.vx; p.y+=p.vy; p.life--; if(p.life<0) particles.splice(i,1); });
+
+            // UI
+            const vel = Math.hypot(rocket.vx, rocket.vy);
+            const percent = Math.min(100, (vel / (15 * rocket.speedMult)) * 100);
+            document.getElementById('vel-disp').innerText = percent.toFixed(0) + '%';
+            
+            updateLanding();
+            updateMarkers();
+        }
+
+        function performWarp(targetId) {
+            isRunning = false;
+            document.getElementById('warp-overlay').style.opacity = 1;
+            
+            setTimeout(() => {
+                loadUniverse(targetId);
+                if(targetId === 'NEON') { 
+                    rocket.x = -800; rocket.y = 0; 
+                    if(!universeUnlocked) {
+                        universeUnlocked = true;
+                        document.getElementById('dimension-ctrl').classList.add('visible');
+                        showNotification("NEUES UNIVERSUM ENTDECKT");
+                    }
+                }
+                else { rocket.x = 2600; rocket.y = -200; }
+                rocket.vx = 0; rocket.vy = 0;
+                cam.x = rocket.x - width/2; cam.y = rocket.y - height/2;
+                
+                setTimeout(() => {
+                    document.getElementById('warp-overlay').style.opacity = 0;
+                    isRunning = true;
+                    loop();
+                }, 1000);
+            }, 1000);
+        }
+
+        function updateLanding() {
+            let near = null;
+            let minDist = Infinity;
+            entities.forEach(e => {
+                if(e.type === 'wormhole' || e.hidden) return;
+                const d = Math.hypot(rocket.x - e.x, rocket.y - e.y);
+                const limit = e.type === 'satellite' ? 60 : e.r + 300; // Increased range for planets/mothership
+                if(d < limit) { if(d < minDist) { minDist = d; near = e; } }
+            });
+            
+            currentNearEntity = near;
+
+            const btn = document.getElementById('land-btn');
+            if(near) {
+                btn.classList.add('visible');
+                
+                const suffix = window.innerWidth > 768 ? ' (ENTER)' : '';
+
+                if(near.type === 'station') btn.innerText = 'ANDOCKEN' + suffix;
+                else if(near.type === 'mothership') btn.innerText = 'KOMMUNIKATION' + suffix;
+                else if(near.type === 'satellite') btn.innerText = 'ANALYSIEREN' + suffix;
+                else btn.innerText = 'DATENBANK' + suffix;
+                
+                btn.onclick = () => {
+                    if(near.type === 'station') openShop();
+                    else showInfo(near);
+                };
+            } else {
+                btn.classList.remove('visible');
+            }
+        }
+
+        // --- DRAW ---
+        function draw() {
+            const bgCol = currentUniverseId === 'SOL' ? '#020617' : '#1e002e';
+            ctx.fillStyle = bgCol; ctx.fillRect(0,0,width,height);
+
+            // Stars
+            ctx.fillStyle = 'white';
+            stars.forEach(s => {
+                let x = (s.x - cam.x*(s.layer*0.1)) % (width+500);
+                let y = (s.y - cam.y*(s.layer*0.1)) % (height+500);
+                if(x<0) x+=width+500; if(y<0) y+=height+500;
+                x-=250; y-=250;
+                ctx.globalAlpha = s.alpha; ctx.fillStyle = s.color;
+                ctx.beginPath(); ctx.arc(x,y,s.size,0,Math.PI*2); ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            // Entities
+            entities.forEach(e => {
+                if(e.hidden) return;
+                const px = e.x - cam.x, py = e.y - cam.y;
+                if(px<-500 || px>width+500 || py<-500 || py>height+500) return;
+
+                if(e.type === 'mothership') drawMothership(e, px, py);
+                else if(e.type === 'planet' || e.type === 'stern') drawPlanet(e, px, py);
+                else if(e.type === 'satellite') drawSatellite(e, px, py);
+                else if(e.type === 'wormhole') drawWormhole(e, px, py);
+                else if(e.type === 'station') drawStation(e, px, py);
+            });
+
+            // Particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color; ctx.globalAlpha = p.life/20;
+                ctx.beginPath(); ctx.arc(p.x-cam.x, p.y-cam.y, Math.random()*3, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            drawRocket();
+        }
+
+        function drawMothership(m, x, y) {
+            // Glow Effect
+            const time = Date.now() * 0.002;
+            ctx.shadowBlur = 30; ctx.shadowColor = '#6F00FF';
+            
+            // Rotating Ring
+            ctx.save(); ctx.translate(x,y); ctx.rotate(time);
+            ctx.strokeStyle = '#6F00FF'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(0,0, m.r + 20, 0, Math.PI + 1); ctx.stroke();
+            ctx.restore();
+
+            ctx.save(); ctx.translate(x,y); ctx.rotate(-time * 0.5);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.globalAlpha = 0.5;
+            ctx.beginPath(); ctx.arc(0,0, m.r + 35, 0, Math.PI * 1.5); ctx.stroke();
+            ctx.restore();
+            ctx.globalAlpha = 1;
+
+            // The Signet (Image)
+            // Centering the image: Image is 1000x1000, we want it size ~160x160
+            const size = m.r * 2.5; 
+            try {
+                if(mosaikImg.complete) {
+                    ctx.drawImage(mosaikImg, x - size/2, y - size/2, size, size);
+                }
+            } catch(e) {}
+
+            ctx.shadowBlur = 0;
+            ctx.fillStyle='white'; ctx.font='10px Rajdhani'; ctx.textAlign='center';
+            ctx.fillText(m.name.toUpperCase(), x, y + m.r + 50);
+        }
+
+        function drawPlanet(p, x, y) {
+            const grad = ctx.createRadialGradient(x,y,p.r, x,y,p.r*2.5);
+            grad.addColorStop(0, p.glow); grad.addColorStop(1, 'transparent');
+            ctx.globalAlpha=0.2; ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,p.r*2.5,0,Math.PI*2); ctx.fill();
+            ctx.globalAlpha=1;
+
+            if(p.rings) {
+                ctx.save(); ctx.translate(x,y); ctx.rotate(-0.5); ctx.scale(1, 0.3);
+                ctx.beginPath(); ctx.arc(0,0,p.r*2,0,Math.PI*2);
+                ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=p.r*0.4; ctx.stroke();
+                ctx.restore();
+            }
+
+            ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(x,y,p.r,0,Math.PI*2); ctx.fill();
+            const s = ctx.createRadialGradient(x-p.r*0.4, y-p.r*0.4, p.r*0.1, x,y, p.r);
+            s.addColorStop(0, 'transparent'); s.addColorStop(1, 'rgba(0,0,0,0.85)');
+            ctx.fillStyle=s; ctx.beginPath(); ctx.arc(x,y,p.r,0,Math.PI*2); ctx.fill();
+
+            if(p.texture) {
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                ctx.beginPath(); ctx.arc(x-20, y-10, p.r*0.35, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(x+30, y+20, p.r*0.2, 0, Math.PI*2); ctx.fill();
+            }
+            if(p.bands) {
+                ctx.fillStyle = 'rgba(0,0,0,0.1)';
+                ctx.fillRect(x-p.r, y-20, p.r*2, 10); ctx.fillRect(x-p.r, y+10, p.r*2, 15);
+            }
+
+            ctx.fillStyle='white'; ctx.font='10px Rajdhani'; ctx.textAlign='center';
+            ctx.fillText(p.name.toUpperCase(), x, y+p.r+20);
+        }
+
+        function drawStation(s, x, y) {
+            ctx.save(); ctx.translate(x, y);
+            ctx.rotate(Date.now()*0.001);
+            ctx.fillStyle = '#1e293b'; ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            for(let i=0; i<6; i++) {
+                const angle = (Math.PI/3) * i;
+                ctx.lineTo(Math.cos(angle)*30, Math.sin(angle)*30);
+            }
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            
+            ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill();
+            ctx.restore();
+
+            ctx.fillStyle='white'; ctx.font='10px Rajdhani'; ctx.textAlign='center';
+            ctx.fillText(s.name.toUpperCase(), x, y+50);
+        }
+
+        function drawSatellite(s, x, y) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+15, y-15); ctx.lineTo(x+35, y-15); ctx.stroke();
+            ctx.fillStyle = '#aaa'; ctx.font='9px Rajdhani'; ctx.textAlign='left';
+            ctx.fillText(s.name, x+37, y-12);
+
+            ctx.save(); ctx.translate(x,y);
+            if(s.name === 'ISS') {
+                ctx.fillStyle = '#999'; ctx.fillRect(-10, -2, 20, 4);
+                ctx.fillStyle = '#38bdf8'; ctx.fillRect(-15, -8, 8, 16); ctx.fillRect(7, -8, 8, 16);
+            } else {
+                ctx.fillStyle = '#ccc'; ctx.beginPath(); ctx.rect(-5, -5, 10, 10); ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function drawWormhole(w, x, y) {
+            const time = Date.now() * 0.002;
+            for(let i=0; i<5; i++) {
+                ctx.save(); ctx.translate(x,y); ctx.rotate(time + i);
+                ctx.strokeStyle = i%2==0 ? w.glow : '#fff'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.ellipse(0, 0, w.r - i*5, (w.r - i*5)*0.6, i*0.4, 0, Math.PI*2); ctx.stroke();
+                ctx.restore();
+            }
+            ctx.fillStyle = 'white'; ctx.textAlign='center'; ctx.font='10px Rajdhani';
+            ctx.fillText(w.name.toUpperCase(), x, y + w.r + 20);
+        }
+
+        function drawRocket() {
+            const x = rocket.x - cam.x, y = rocket.y - cam.y;
+            ctx.save(); ctx.translate(x,y); ctx.rotate(rocket.angle);
+            
+            const hull = '#e2e8f0'; 
+            const light = rocket.speedMult > 1 ? '#d946ef' : '#38bdf8';
+
+            ctx.shadowBlur=15; ctx.shadowColor=light;
+            
+            // Wings
+            ctx.fillStyle = '#475569';
+            ctx.beginPath(); ctx.moveTo(-15,0); ctx.lineTo(-25,18); ctx.lineTo(-5,5); ctx.lineTo(15,0); ctx.lineTo(-5,-5); ctx.lineTo(-25,-18); ctx.fill();
+            
+            // Body
+            ctx.fillStyle = hull; ctx.beginPath(); ctx.ellipse(-5,0,20,6,0,0,Math.PI*2); ctx.fill();
+            
+            // Cockpit
+            ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(2,0,6,3,0,0,Math.PI*2); ctx.fill();
+
+            if(rocket.speedMult > 1) {
+                ctx.strokeStyle = '#d946ef'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(-5, -6); ctx.lineTo(10, 0); ctx.lineTo(-5, 6); ctx.stroke();
+            }
+
+            ctx.restore(); ctx.shadowBlur=0;
+        }
+
+        function updateMarkers() {
+            const targets = entities.filter(e => e.type !== 'satellite');
+            const layer = document.getElementById('ui-layer');
+            const arrs = layer.querySelectorAll('.nav-arrow');
+            const map = {}; arrs.forEach(a => map[a.dataset.id] = a);
+
+            targets.forEach(p => {
+                if(p.hidden) { if(map[p.id]) map[p.id].remove(); return; }
+
+                const px = p.x - cam.x, py = p.y - cam.y;
+                const onScreen = px>0 && px<width && py>0 && py<height;
+                
+                if(onScreen) { if(map[p.id]) map[p.id].style.opacity=0; return; }
+
+                if(!map[p.id]) {
+                    const el = document.createElement('div');
+                    el.className = 'nav-arrow'; el.dataset.id = p.id;
+                    el.innerHTML = `<div class="nav-label">${p.name}</div>`;
+                    layer.appendChild(el); map[p.id] = el;
+                    if(p.type==='wormhole') el.classList.add('quest-target');
+                    if(p.type==='mothership') { 
+                        el.classList.add('quest-target'); 
+                        el.style.borderBottomColor = '#6F00FF'; 
+                    }
+                }
+                
+                const el = map[p.id];
+                el.style.opacity = 0.8;
+                const dx = p.x - rocket.x, dy = p.y - rocket.y;
+                const dist = Math.hypot(dx,dy);
+                el.querySelector('.nav-label').innerText = (dist/1000).toFixed(0) + 'k';
+                
+                const a = Math.atan2(dy,dx);
+                const cx=width/2, cy=height/2, pad=40;
+                let t = Math.min(Math.abs((cx-pad)/Math.cos(a)), Math.abs((cy-pad)/Math.sin(a)));
+                el.style.transform = `translate(${cx + Math.cos(a)*t}px, ${cy + Math.sin(a)*t}px) rotate(${a*180/Math.PI + 90}deg)`;
+            });
+        }
+
+        function openShop() {
+            document.getElementById('shop-modal').classList.add('active');
+        }
+
+        function showInfo(data) {
+            if(data.id === 'uranus' && !wormholeRevealed) {
+                wormholeRevealed = true;
+                const wh = entities.find(e => e.id === 'wormhole');
+                if(wh) wh.hidden = false;
+                showNotification("ANOMALIE ENTDECKT! ROUTE MARKIERT.");
+            }
+
+            document.getElementById('modal-title').innerText = data.name.toUpperCase();
+            document.getElementById('modal-sub').innerText = data.sub;
+            document.getElementById('modal-desc').innerText = data.desc;
+            document.getElementById('modal-comp').innerText = data.comp;
+            document.getElementById('modal-missions').innerText = data.missions;
+
+            const grid = document.getElementById('modal-grid');
+            grid.innerHTML = '';
+            if(data.stats) {
+                for (const [key, value] of Object.entries(data.stats)) {
+                    grid.innerHTML += `<div class="data-box"><div class="data-label">${key}</div><div class="data-val">${value}</div></div>`;
+                }
+            }
+
+            // --- LINK FEATURE ---
+            const linkContainer = document.getElementById('modal-link-container');
+            linkContainer.innerHTML = ''; // Clear previous
+            if(data.link) {
+                const btn = document.createElement('a');
+                btn.href = data.link;
+                btn.target = '_blank';
+                btn.className = 'mosaik-link-btn';
+                btn.innerText = 'KOMMUNIKATIONS-KANAL ÖFFNEN';
+                linkContainer.appendChild(btn);
+            }
+
+            // Visual Colors
+            const vis = document.getElementById('modal-visual');
+            // If it's the mothership, use purple branding, else use object color
+            const color = data.type === 'mothership' ? '#6F00FF' : data.color;
+            vis.style.background = color;
+            vis.style.boxShadow = `0 0 30px ${data.glow || color}`;
+            
+            document.getElementById('info-modal').classList.add('active');
+        }
+    </script>
+
+<script>
+(function() {
+    /**
+     * KONFIGURATION & STATE
+     */
+    const STATE = {
+        hp: 100,
+        maxHp: 100,
+        hasCannon: false,
+        isSuper: false,
+        neonTime: 0, // Zeit im Neon Universum (für Schwierigkeit)
+        projectiles: [],
+        enemyProjectiles: [],
+        enemies: [],
+        easterEgg: null, // {x, y, type: 'unicorn'|'ufo'}
+        lastShot: 0
+    };
+
+    // 1. NEUE PLANETEN & GATEWAY FÜR NEON HINZUFÜGEN
+    const newNeonObjects = [
+        { 
+            id: 'cyber_prime', type: 'planet', name: 'Cyber Prime', r: 110, color: '#2dd4bf', x: -1500, y: 800, glow: '#5eead4',
+            sub: 'Daten-Archiv', 
+            desc: 'Ein Planet vollständig aus vernetzten Server-Farmen. Die Atmosphäre besteht aus verdampftem Kühlmittel.',
+            stats: {"Speicher": "999 Yottabyte", "Latenz": "0ms", "Bevölkerung": "K.I. Cluster"}, 
+            comp: 'Silizium, Graphen, Lichtleiter.', missions: '-'
+        },
+        { 
+            id: 'void_echo', type: 'planet', name: 'Void Echo', r: 70, color: '#4c1d95', x: 2200, y: -900, glow: '#8b5cf6',
+            sub: 'Geisterwelt', 
+            desc: 'Dieser Planet flackert in und aus der Existenz. Sensoren spielen verrückt.',
+            stats: {"Phase": "Instabil", "Gefahr": "Hoch"}, comp: 'Dunkle Materie.', missions: '-'
+        },
+        // 2. DAS WAFFEN GATEWAY
+        {
+            id: 'weapon_gateway', type: 'station', name: 'Ares Armory', r: 35, color: '#ef4444', x: -500, y: -1200, glow: '#f87171',
+            sub: 'Waffen-Systeme', desc: 'Docken Sie hier an, um Verteidigungssysteme zu installieren.'
+        }
+    ];
+
+    // Wir pushen die neuen Objekte in das existierende Array
+    // Da UNIVERSE_NEON const ist, modifizieren wir den Inhalt des Arrays direkt.
+    // Aber Achtung: Das Spiel klont das Array beim Warp. Wir müssen sicherstellen, 
+    // dass diese Objekte verfügbar sind, wenn NEON geladen wird.
+    // Da wir keinen Zugriff auf den Scope VOR dem Load haben, fügen wir sie dem "entities" Array hinzu,
+    // wenn wir in Neon sind, und patchen das Original-Array für zukünftige Warps.
+    
+    // Patch für das Original-Array (für Reset/Reload)
+    UNIVERSE_NEON.push(...newNeonObjects);
+
+
+    /**
+     * CORE LOGIC INJECTION
+     * Wir speichern die Original-Funktionen und rufen sie in unseren neuen Wrappern auf.
+     */
+    
+    const originalUpdate = window.update;
+    const originalDraw = window.draw;
+    const originalLoadUniverse = window.loadUniverse; // Zugriff falls global, sonst patchen wir in loop
+
+    // Override Update Loop
+    window.update = function() {
+        // Original Logik ausführen (Bewegung, Physik)
+        originalUpdate();
+
+        // Nur Logik ausführen, wenn wir nicht im Warp sind
+        if (!document.getElementById('warp-overlay').style.opacity || document.getElementById('warp-overlay').style.opacity == "0") {
+            extensionUpdate();
+        }
+    };
+
+    // Override Draw Loop
+    window.draw = function() {
+        // Original Zeichnen (Hintergrund, Sterne, Planeten, Schiff)
+        originalDraw();
+        
+        // Erweiterungen darüber zeichnen
+        extensionDraw();
+    };
+
+
+    /**
+     * LOGIK DER ERWEITERUNG
+     */
+    function extensionUpdate() {
+        const isNeon = currentUniverseId === 'NEON';
+
+        // Projektile bewegen (Universums-Unabhängig, falls wir später Waffen in Sol erlauben wollen, 
+        // aber Anforderung sagt nur Neon Gegner. Wir lassen Projektile trotzdem fliegen)
+        updateProjectiles();
+
+        if (isNeon) {
+            STATE.neonTime++;
+            handleEnemies();
+            handleEasterEgg();
+            checkCollisions();
+            
+            // Regeneration im Super-Modus
+            if (STATE.isSuper && STATE.hp < STATE.maxHp) STATE.hp += 0.05;
+        } else {
+            // Reset State wenn in Sol (sicherheitshalber)
+            STATE.enemies = [];
+            STATE.enemyProjectiles = [];
+            STATE.neonTime = 0;
+            if(STATE.hp < STATE.maxHp) STATE.hp += 0.1; // Langsame Reparatur in Sol
+        }
+    }
+
+    function handleEnemies() {
+        // 3. GEGNER SPAWN LOGIK (Progressiv)
+        // Schwierigkeit steigt alle 600 Frames (ca. 10 Sekunden)
+        const difficulty = Math.floor(STATE.neonTime / 600) + 1;
+        const maxEnemies = 2 + difficulty; 
+        const spawnChance = 0.01 + (difficulty * 0.002);
+
+        if (STATE.enemies.length < maxEnemies && Math.random() < spawnChance) {
+            spawnEnemy(difficulty);
+        }
+
+        // Gegner Verhalten
+        STATE.enemies.forEach(e => {
+            // Bewegung zum Spieler
+            const dx = rocket.x - e.x;
+            const dy = rocket.y - e.y;
+            const dist = Math.hypot(dx, dy);
+            const angle = Math.atan2(dy, dx);
+
+            // Nicht zu nah ranfliegen (Abstand halten)
+            if (dist > 300) {
+                e.vx += Math.cos(angle) * 0.2;
+                e.vy += Math.sin(angle) * 0.2;
+            } else {
+                // Bremsen / Kreisen
+                e.vx *= 0.95;
+                e.vy *= 0.95;
+            }
+            
+            // Limit Speed
+            const speed = Math.hypot(e.vx, e.vy);
+            if (speed > e.maxSpeed) {
+                e.vx = (e.vx / speed) * e.maxSpeed;
+                e.vy = (e.vy / speed) * e.maxSpeed;
+            }
+
+            e.x += e.vx;
+            e.y += e.vy;
+
+            // Schießen
+            e.cooldown--;
+            if (e.cooldown <= 0 && dist < 800) {
+                shootEnemyProjectile(e);
+                e.cooldown = 100 - (difficulty * 5); // Schnelleres Schießen bei höherer Schwierigkeit
+                if (e.cooldown < 30) e.cooldown = 30;
+            }
+        });
+    }
+
+    function spawnEnemy(difficulty) {
+        // Spawn irgendwo um den Spieler herum
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 1000 + Math.random() * 500;
+        const type = difficulty > 5 ? (Math.random() > 0.5 ? 'heavy' : 'scout') : 'scout';
+        
+        STATE.enemies.push({
+            x: rocket.x + Math.cos(angle) * dist,
+            y: rocket.y + Math.sin(angle) * dist,
+            vx: 0, vy: 0,
+            hp: type === 'heavy' ? 50 : 20,
+            maxHp: type === 'heavy' ? 50 : 20,
+            type: type,
+            maxSpeed: type === 'heavy' ? 3 : 6,
+            cooldown: 50,
+            size: type === 'heavy' ? 25 : 15,
+            color: type === 'heavy' ? '#f59e0b' : '#ef4444'
+        });
+    }
+
+    function shootEnemyProjectile(enemy) {
+        const angle = Math.atan2(rocket.y - enemy.y, rocket.x - enemy.x);
+        // Ungenauigkeit
+        const spread = (Math.random() - 0.5) * 0.2;
+        
+        STATE.enemyProjectiles.push({
+            x: enemy.x, y: enemy.y,
+            vx: Math.cos(angle + spread) * 8,
+            vy: Math.sin(angle + spread) * 8,
+            life: 120,
+            dmg: enemy.type === 'heavy' ? 20 : 10
+        });
+    }
+
+    // 5. EASTER EGG LOGIK
+    function handleEasterEgg() {
+        if (!STATE.easterEgg) {
+            // Chance 1:2000 pro Frame
+            if (Math.random() < 0.0005) {
+                const angle = Math.random() * Math.PI * 2;
+                STATE.easterEgg = {
+                    x: rocket.x + Math.cos(angle) * 800,
+                    y: rocket.y + Math.sin(angle) * 800,
+                    type: Math.random() > 0.5 ? 'unicorn' : 'ufo',
+                    angle: 0
+                };
+                showNotification(STATE.easterEgg.type === 'unicorn' ? "MAGISCHE ENERGIE ORTET" : "FREUNDLICHES SIGNAL ORTET");
+            }
+        } else {
+            // Easter Egg bewegt sich sanft
+            STATE.easterEgg.x += Math.sin(Date.now() * 0.001) * 2;
+            STATE.easterEgg.y += Math.cos(Date.now() * 0.001) * 2;
+            STATE.easterEgg.angle += 0.01;
+
+            // Kollision Player <-> Easter Egg
+            const dist = Math.hypot(rocket.x - STATE.easterEgg.x, rocket.y - STATE.easterEgg.y);
+            if (dist < 50) {
+                activateSuperMode();
+                STATE.easterEgg = null;
+            }
+            
+            // Despawn wenn zu weit weg
+            if (dist > 3000) STATE.easterEgg = null;
+        }
+    }
+
+    function activateSuperMode() {
+        STATE.isSuper = true;
+        STATE.maxHp = 200;
+        STATE.hp = 200;
+        STATE.hasCannon = true; // Super mode gibt automatisch Waffen
+        showNotification("SUPER-SCHIFF AKTIVIERT!");
+        
+        // Visueller Effekt (Partikel Explosion)
+        for(let i=0; i<50; i++) {
+            particles.push({
+                x: rocket.x, y: rocket.y,
+                vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10,
+                life: 60, color: '#fff'
+            });
+        }
+    }
+
+    function updateProjectiles() {
+        // Player Projectiles
+        for (let i = STATE.projectiles.length - 1; i >= 0; i--) {
+            let p = STATE.projectiles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life--;
+            if (p.life <= 0) STATE.projectiles.splice(i, 1);
+        }
+        // Enemy Projectiles
+        for (let i = STATE.enemyProjectiles.length - 1; i >= 0; i--) {
+            let p = STATE.enemyProjectiles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life--;
+            if (p.life <= 0) STATE.enemyProjectiles.splice(i, 1);
+        }
+    }
+
+    function checkCollisions() {
+        // 1. Player Projectiles hitting Enemies
+        STATE.projectiles.forEach((p, pIdx) => {
+            STATE.enemies.forEach((e, eIdx) => {
+                const dist = Math.hypot(p.x - e.x, p.y - e.y);
+                if (dist < e.size + 10) {
+                    // Hit!
+                    e.hp -= 10; // Player dmg
+                    p.life = 0; // Kugel weg
+                    // Hit Effekt
+                    particles.push({x: e.x, y: e.y, vx: p.vx*0.2, vy: p.vy*0.2, life: 10, color: '#fff'});
+                    
+                    if (e.hp <= 0) {
+                        // Enemy Explosion
+                        for(let k=0; k<10; k++) {
+                            particles.push({
+                                x: e.x, y: e.y, 
+                                vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5, 
+                                life: 30, color: e.color
+                            });
+                        }
+                        STATE.enemies.splice(eIdx, 1);
+                    }
+                }
+            });
+        });
+
+        // 2. Enemy Projectiles hitting Player
+        STATE.enemyProjectiles.forEach((p, pIdx) => {
+            const dist = Math.hypot(p.x - rocket.x, p.y - rocket.y);
+            if (dist < 20) {
+                takeDamage(p.dmg);
+                p.life = 0;
+            }
+        });
+    }
+
+    function takeDamage(amount) {
+        if (STATE.isSuper) amount *= 0.5; // Armor im Super Mode
+        STATE.hp -= amount;
+        
+        // Screen Shake Effekt Simulation (einfach Camera kurz versetzen)
+        cam.x += (Math.random()-0.5) * 20;
+        cam.y += (Math.random()-0.5) * 20;
+
+        showNotification("WARNUNG: HÜLLENSCHADEN");
+
+        if (STATE.hp <= 0) {
+            playerDie();
+        }
+    }
+
+    function playerDie() {
+        // Explosion
+        for(let i=0; i<100; i++) {
+            particles.push({
+                x: rocket.x, y: rocket.y,
+                vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15,
+                life: 100, color: '#f00'
+            });
+        }
+        
+        STATE.hp = STATE.maxHp;
+        STATE.enemies = [];
+        STATE.enemyProjectiles = [];
+        STATE.isSuper = false; // Super mode verlieren
+        // Man behält die Waffe (Extension Punkt 2 sagt man kauft sie, wäre fies sie zu verlieren),
+        // aber wir resetten den Modus.
+
+        // 4. RESPAWN IN SOL
+        app.warp('SOL');
+        showNotification("KRITISCHER FEHLER - NOTFALL WARP EINGELEITET");
+    }
+
+    /**
+     * VISUALS
+     */
+    function extensionDraw() {
+        const ctx = document.getElementById('canvas').getContext('2d');
+        const cx = cam.x;
+        const cy = cam.y;
+
+        // Easter Egg Draw
+        if (STATE.easterEgg) {
+            const e = STATE.easterEgg;
+            ctx.save();
+            ctx.translate(e.x - cx, e.y - cy);
+            ctx.rotate(e.angle);
+            ctx.font = "40px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(e.type === 'unicorn' ? '🦄' : '🛸', 0, 0);
+            
+            // Glow
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#fff';
+            ctx.beginPath(); ctx.arc(0,0,25,0,Math.PI*2); ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.stroke();
+            ctx.restore();
+        }
+
+        // Draw Player Projectiles
+        ctx.shadowBlur = 10; ctx.shadowColor = '#0ff';
+        ctx.fillStyle = '#ccfbf1';
+        STATE.projectiles.forEach(p => {
+            ctx.beginPath(); ctx.arc(p.x - cx, p.y - cy, 3, 0, Math.PI*2); ctx.fill();
+        });
+
+        // Draw Enemies
+        STATE.enemies.forEach(e => {
+            ctx.save();
+            ctx.translate(e.x - cx, e.y - cy);
+            // Rotieren in Flugrichtung
+            ctx.rotate(Math.atan2(e.vy, e.vx) + Math.PI/2);
+            
+            ctx.shadowBlur = 10; ctx.shadowColor = e.color;
+            ctx.fillStyle = e.color;
+            
+            // Einfache Dreiecksform für Gegner
+            ctx.beginPath();
+            ctx.moveTo(0, -e.size);
+            ctx.lineTo(e.size/2, e.size);
+            ctx.lineTo(-e.size/2, e.size);
+            ctx.closePath();
+            ctx.fill();
+
+            // HP Bar Gegner
+            ctx.fillStyle = 'red';
+            ctx.fillRect(-10, -e.size - 10, 20, 3);
+            ctx.fillStyle = '#0f0';
+            ctx.fillRect(-10, -e.size - 10, 20 * (e.hp / e.maxHp), 3);
+
+            ctx.restore();
+        });
+
+        // Draw Enemy Projectiles
+        ctx.shadowColor = '#f00';
+        ctx.fillStyle = '#fca5a5';
+        STATE.enemyProjectiles.forEach(p => {
+            ctx.beginPath(); ctx.arc(p.x - cx, p.y - cy, 4, 0, Math.PI*2); ctx.fill();
+        });
+        ctx.shadowBlur = 0;
+
+        // PLAYER HUD EXTENSIONS (HP Bar & Super Mode Visual)
+        drawPlayerHUD(ctx);
+    }
+
+    function drawPlayerHUD(ctx) {
+        // Super Mode Aura
+        if (STATE.isSuper) {
+            const rx = rocket.x - cam.x;
+            const ry = rocket.y - cam.y;
+            ctx.save();
+            ctx.translate(rx, ry);
+            ctx.rotate(Date.now() * 0.005);
+            ctx.strokeStyle = `hsl(${Date.now() % 360}, 100%, 50%)`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 30, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // HP Anzeige (Links unten über Scanner Button oder oben)
+        // Zeichnen wir es direkt unter das Schiff für schnelle Übersicht
+        if (currentUniverseId === 'NEON' || STATE.hp < STATE.maxHp) {
+            const rx = rocket.x - cam.x;
+            const ry = rocket.y - cam.y;
+            
+            const barW = 40;
+            const barH = 4;
+            const yOff = 30;
+
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(rx - barW/2, ry + yOff, barW, barH);
+            
+            const hpPerc = Math.max(0, STATE.hp / STATE.maxHp);
+            ctx.fillStyle = hpPerc > 0.5 ? '#10b981' : (hpPerc > 0.2 ? '#f59e0b' : '#ef4444');
+            ctx.fillRect(rx - barW/2, ry + yOff, barW * hpPerc, barH);
+        }
+    }
+
+    /**
+     * INPUT & INTERACTION
+     */
+    
+    // Schießen
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            if (!STATE.hasCannon) {
+                // Nur Nachricht wenn man versucht zu schießen ohne Waffe
+                if (Date.now() - STATE.lastShot > 2000) { // Spam verhindern
+                    showNotification("KEINE WAFFENSYSTEME INSTALLIERT");
+                    STATE.lastShot = Date.now();
+                }
+                return;
+            }
+
+            const now = Date.now();
+            const fireRate = STATE.isSuper ? 100 : 300; // Schneller im Super Mode
+            
+            if (now - STATE.lastShot > fireRate) {
+                STATE.lastShot = now;
+                // Shoot
+                const speed = 15;
+                const offset = 20;
+                
+                // Im Super Mode: 3-fach Schuss
+                if (STATE.isSuper) {
+                    [-0.2, 0, 0.2].forEach(angleOffset => {
+                        STATE.projectiles.push({
+                            x: rocket.x + Math.cos(rocket.angle) * offset,
+                            y: rocket.y + Math.sin(rocket.angle) * offset,
+                            vx: Math.cos(rocket.angle + angleOffset) * speed + rocket.vx,
+                            vy: Math.sin(rocket.angle + angleOffset) * speed + rocket.vy,
+                            life: 60
+                        });
+                    });
+                } else {
+                    // Normaler Schuss
+                    STATE.projectiles.push({
+                        x: rocket.x + Math.cos(rocket.angle) * offset,
+                        y: rocket.y + Math.sin(rocket.angle) * offset,
+                        vx: Math.cos(rocket.angle) * speed + rocket.vx,
+                        vy: Math.sin(rocket.angle) * speed + rocket.vy,
+                        life: 50
+                    });
+                }
+            }
+        }
+    });
+
+    // Shop Modifikation (Intercept OpenShop)
+    const originalOpenShop = window.openShop; // Existiert im Scope oben nicht explizit als global exposed, 
+    // aber wir haben Zugriff auf 'app' Objekt oder 'openShop' function wenn sie global ist.
+    // Im existierenden Code ist `openShop` eine lokale Funktion. Aber `app` ist global.
+    // Der Button ruft `openShop()` direkt auf, falls im HTML onclick.
+    // Im existierenden Code: `btn.onclick = () => { if(...) openShop(); ... }`
+    // Wir können `openShop` global überschreiben.
+
+    window.openShop = function() {
+        const modal = document.getElementById('shop-modal');
+        const content = modal.querySelector('.modal-body');
+        const title = modal.querySelector('h2');
+        const sub = modal.querySelector('.text-emerald-400');
+        
+        // Prüfen, an welcher Station wir sind
+        const near = currentNearEntity; // Variable aus dem Original-Script
+
+        if (near && near.id === 'weapon_gateway') {
+            // Weapon Shop UI Injection
+            title.innerText = "ARES ARMORY";
+            sub.innerText = "Waffen & Verteidigung";
+            
+            // Custom Shop Content
+            let btnText = STATE.hasCannon ? "BEREITS INSTALLIERT" : "INSTALLIEREN";
+            let btnDisabled = STATE.hasCannon ? "disabled" : "";
+            
+            content.innerHTML = `
+                <p class="text-slate-300 text-sm mb-4">Rüsten Sie Ihr Schiff für den Kampf im Neon-Sektor aus.</p>
+                <div class="shop-item" style="border-color: #ef4444; background: rgba(239, 68, 68, 0.1);">
+                    <div>
+                        <h3 class="text-white font-bold">Photonen-Kanone MK-1</h3>
+                        <p class="text-xs text-slate-400 mt-1">Ermöglicht Feuerkraft. [SPACE] zum Schießen.</p>
+                    </div>
+                    <button id="buy-weapon-btn" class="upgrade-btn" style="background: #ef4444;" ${btnDisabled} onclick="buyCannon()">
+                        ${btnText}
+                    </button>
+                </div>
+            `;
+            modal.classList.add('active');
+        } else {
+            // Restore Original Content (Standard Shop)
+            // Da wir den InnerHTML überschrieben haben, müssen wir ihn wiederherstellen, 
+            // oder einfach Seite neu laden... aber eleganter: wir bauen das Original HTML kurz nach.
+            // Vereinfachung: Wir setzen Title zurück und fügen Original-HTML ein.
+            title.innerText = "GATEWAY ALPHA";
+            sub.innerText = "Werkstatt & Upgrades";
+            content.innerHTML = `
+                <p class="text-slate-300 text-sm">Willkommen, Commander. Hier können Sie Ihr Schiff für interstellare Reisen modifizieren.</p>
+                <div class="shop-item">
+                    <div>
+                        <h3 class="text-white font-bold">V-2 Hyperdrive</h3>
+                        <p class="text-xs text-slate-400 mt-1">Erhöht Schub um 100%. Violette Ionen-Spur.</p>
+                    </div>
+                    <button id="buy-upgrade-btn" class="upgrade-btn" onclick="app.buyUpgrade()">INSTALLIEREN</button>
+                </div>
+                <div class="mt-8 p-4 bg-slate-800 rounded border border-white/5">
+                    <div class="text-xs text-slate-500 uppercase mb-2">Statusbericht</div>
+                    <p id="upgrade-status-text" class="text-sm text-emerald-400">Systeme nominal.</p>
+                </div>
+            `;
+            // Check if already bought (visual update)
+            if(rocket.speedMult > 1.0) {
+                const btn = document.getElementById('buy-upgrade-btn');
+                btn.innerText = "INSTALLIERT"; btn.disabled = true;
+                document.getElementById('upgrade-status-text').innerText = "Hyperdrive Aktiv.";
+            }
+            modal.classList.add('active');
+        }
+    };
+
+    // Globale Funktion für den Waffenkauf
+    window.buyCannon = function() {
+        STATE.hasCannon = true;
+        const btn = document.getElementById('buy-weapon-btn');
+        btn.innerText = "INSTALLIERT";
+        btn.disabled = true;
+        showNotification("WAFFENSYSTEME ONLINE");
+        setTimeout(app.closeShop, 1000);
+    }
+
+})();
+</script>
+
+</body>
+</html>
